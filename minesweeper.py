@@ -1,5 +1,5 @@
 import sys
-from typing import Final
+from typing import Final, Optional
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QMouseEvent
@@ -8,9 +8,9 @@ from PyQt6.QtWidgets import (
     QLabel, QComboBox, QVBoxLayout, QGridLayout, QScrollArea, QMessageBox
 )
 
-EASY: Final[str] = '8 8 10'
-NORMAL: Final[str] = '16 16 40'
-HARD: Final[str] = '30 16 99'
+EASY: Final[str] = '8 8 10'  # Легкий уровень: 8×8, 10 мин
+NORMAL: Final[str] = '16 16 40'  # Средний уровень: 16×16, 40 мин
+HARD: Final[str] = '30 16 99'  # Сложный уровень: 30×16, 99 мин
 ADMIN: Final[str] = ('gAAAAABo0SlSROmflEkNs98BH3ArIAXa9DNNfrO0IRbmAPjE'
                      'cz21H2-GTkP5KpU5EpZOgrSH8ck98tQp_UJljBD34F7nwpj0DdRPctHhQqLiy18qbuBmJD8=')
 
@@ -56,7 +56,7 @@ class Minesweeper:
             return f'{'?':{format_spec}}'
 
     class ConsoleGame:
-        def __init__(self, mode: EASY or NORMAL or HARD = NORMAL) -> None:
+        def __init__(self, mode: Optional[EASY, NORMAL, HARD] = NORMAL) -> None:
             self.rows, self.cols, self.mines = map(int, mode.split())
             self.board = [[0] * self.cols for _ in range(self.rows)]
             self.visible = [[False] * self.cols for _ in range(self.rows)]
@@ -69,6 +69,7 @@ class Minesweeper:
             from random import randint
 
             placed = 0
+            # Запоминаем клетку первого хода и соседние клетки, чтобы гарантировать безопасное начало игры.
             forbidden = {(safe_r + dr, safe_c + dc) for dr in range(-1, 2) for dc in range(-1, 2)
                          if 0 <= safe_r + dr < self.rows and 0 <= safe_c + dc < self.cols}
 
@@ -89,6 +90,7 @@ class Minesweeper:
         def _calculate_numbers(self) -> None:
             from itertools import product
 
+            # Для каждой клетки вычисляется количество соседних мин.
             for r, c in product(range(self.rows), range(self.cols)):
                 if isinstance(self.board[r][c], Minesweeper.Mine):
                     continue
@@ -156,6 +158,7 @@ class Minesweeper:
             if self.board[r][c] == 0:
                 from itertools import product
 
+                # Если вокруг нет мин, автоматически открываем соседние клетки.
                 for dr, dc in product(range(-1, 2), repeat=2):
                     nr, nc = r + dr, c + dc
                     if 0 <= nr < self.rows and 0 <= nc < self.cols:
@@ -191,6 +194,7 @@ class Minesweeper:
         def check_victory(self) -> bool:
             from itertools import product
 
+            # Победа наступает, когда открыты все клетки без мин.
             for r, c in product(range(self.rows), range(self.cols)):
                 if not isinstance(self.board[r][c], Minesweeper.Mine) and not self.visible[r][c]:
                     return False
@@ -228,6 +232,8 @@ class Minesweeper:
 
     class _Game(QMainWindow):
         class MSG(QMessageBox):
+            """Класс для отображения сообщений о победе и поражении."""
+
             def __init__(self, parent: QMainWindow) -> None:
                 super().__init__(parent)
                 self._parent = parent
@@ -240,6 +246,8 @@ class Minesweeper:
                 self.information(self._parent, 'Game Over', 'Проигрыш. Подрыв на мине ;(')
 
         class Cell(QPushButton):
+            """Клетка игрового поля."""
+
             def __init__(self, row: int, col: int, parent_game: 'Minesweeper._Game') -> None:
                 super().__init__('')
                 self.setStyleSheet("""
@@ -267,13 +275,18 @@ class Minesweeper:
                 self.row = row
                 self.col = col
                 self.parent_game = parent_game
+
+                # Текущее состояние клетки.
                 self.is_open = False
                 self.is_flagged = False
                 self.is_doubt = False
 
             def mousePressEvent(self, e: QMouseEvent) -> None:
+                # Левая кнопка — открыть клетку.
+                # Правая — установить или снять флаг.
+                # Средняя — поставить или убрать знак вопроса.
                 if self.is_open:
-                    return
+                    return  # Уже открытая клетка повторно не обрабатывается.
 
                 game_logic: Minesweeper.ConsoleGame = self.parent_game.logic
 
@@ -302,7 +315,7 @@ class Minesweeper:
                         self.is_flagged = False
 
                     elif self.parent_game.logic.flags_count() == self.parent_game.logic.mines:
-                        return
+                        return  # Нельзя поставить больше флагов, чем количество мин.
 
                     else:
                         self.setText('🚩')
@@ -314,6 +327,7 @@ class Minesweeper:
                     if self.parent_game.is_admin:
                         game_logic.print_board()
 
+                # Проверяем выполнение условий победы после каждого действия игрока.
                 if (e.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton) and game_logic.check_victory()
                         and self.parent_game.logic.flags_count() == self.parent_game.logic.mines):
                     msg_box = Minesweeper._Game.MSG(self.parent_game)
@@ -321,15 +335,17 @@ class Minesweeper:
                     self.parent_game.main_menu()
                     return
 
+            # Открывает клетку и обновляет её отображение.
             def open_cell(self, game_logic: 'Minesweeper.ConsoleGame', gameover=False) -> None:
                 if self.is_open or self.is_flagged:
-                    return
+                    return  # Запрещаем повторное открытие и открытие клетки с флагом.
 
                 self.is_open = True
                 game_logic.open_cell(self.row + 1, self.col + 1)
                 value = game_logic.board[self.row][self.col]
                 game_logic.print_board()
 
+                # Если открыта мина - игра заканчивается.
                 if isinstance(value, Minesweeper.Mine):
                     if gameover:
                         self.setStyleSheet(f"background-color: red")
@@ -342,6 +358,7 @@ class Minesweeper:
                     from itertools import product
 
                     layout = self.parentWidget().layout()
+                    # При проигрыше открываем все клетки игрового поля.
                     for r, c in product(range(game_logic.rows), range(game_logic.cols)):
                         neighbor = layout.itemAtPosition(r, c).widget()
                         if neighbor and not neighbor.is_open:
@@ -354,17 +371,19 @@ class Minesweeper:
                     self.parent_game.main_menu()
                     return
 
+                # Цвет цифры зависит от количества соседних мин.
                 number_colors = ["#0000FF", "#008200", "#FF0000", "#000084", "#840000", "#008284", "#840084", "#000000"]
                 self.setStyleSheet(f"background-color: #aaaaaa; color: {number_colors[value - 1]}; font-weight: bold;")
 
                 if value > 0:
-                    self.setText(str(value))
+                    self.setText(str(value))  # Отображаем количество соседних мин.
 
                 else:
                     layout = self.parentWidget().layout()
 
                     from itertools import product
 
+                    # Если открыта пустая клетка, рекурсивно открываем соседние клетки.
                     for dx, dy in product(range(-1, 2), repeat=2):
                         nx, ny = self.row + dx, self.col + dy
                         if 0 <= nx < game_logic.rows and 0 <= ny < game_logic.cols:
@@ -372,7 +391,8 @@ class Minesweeper:
                             if neighbor and not neighbor.is_open:
                                 neighbor.open_cell(game_logic)
 
-        def __init__(self, mode: None or ADMIN = None) -> None:
+        # Создание главного окна приложения.
+        def __init__(self, mode: Optional[None, ADMIN] = None) -> None:
             super().__init__()
             self.setStyleSheet("""
             QMainWindow {
@@ -456,6 +476,7 @@ class Minesweeper:
             }
             """)
 
+            # В режиме администратора выводится игровое поле в консоль и отображается скрытая информация.
             if mode == ADMIN:
                 self.is_admin = True
             else:
@@ -469,6 +490,7 @@ class Minesweeper:
 
             self.main_menu()
 
+        # Создание главного меню игры.
         def main_menu(self) -> None:
             self.setFixedSize(QSize(500, 500))
 
@@ -504,12 +526,13 @@ class Minesweeper:
             central_widget.setLayout(menu_layout)
             self.setCentralWidget(central_widget)
 
+        # Создание нового игрового поля.
         def start_game(self) -> None:
             self.logic = Minesweeper.ConsoleGame(self.mode)
             rows, cols = self.logic.rows, self.logic.cols
 
             if self.is_admin:
-                self.logic.print_board(reveal=True)
+                self.logic.print_board(reveal=True)  # В режиме администратора сразу выводится расположение мин.
 
             central_widget = QWidget()
 
@@ -530,6 +553,7 @@ class Minesweeper:
 
             from itertools import product
 
+            # Создаем кнопку для каждой клетки игрового поля.
             for row, col in product(range(rows), range(cols)):
                 cell = Minesweeper._Game.Cell(row, col, self)
                 game_layout.addWidget(cell, row, col)
@@ -542,6 +566,7 @@ class Minesweeper:
             height = rows * 36 + 50
 
             if width <= max_width and height <= max_height:
+                # Если поле помещается в окно, отображаем его без полос прокрутки.
                 wrapper = QWidget()
                 wrapper.setObjectName('gameWrapper')
 
@@ -557,6 +582,7 @@ class Minesweeper:
                 self.setFixedSize(QSize(width, height))
 
             else:
+                # Для больших полей используем область прокрутки.
                 scroll = QScrollArea()
                 scroll.setWidgetResizable(True)
                 scroll.setWidget(central_widget)
@@ -575,10 +601,12 @@ class Minesweeper:
                 self.setCentralWidget(wrapper)
                 self.setFixedSize(QSize(min(cols * 36, 800), min(rows * 36 + 100, 700)))
 
+        # Обновляет количество оставшихся флагов.
         def update_flags_count(self):
             remaining = self.logic.mines - self.logic.flags_count()
             self.flags_label.setText(f"🚩 Осталось: {remaining}")
 
+        # Открывает окно настроек игры.
         def settings(self) -> None:
             self.setFixedSize(QSize(500, 500))
 
@@ -609,6 +637,7 @@ class Minesweeper:
             central_widget.setLayout(settings_layout)
             self.setCentralWidget(central_widget)
 
+        # Изменяет уровень сложности игры.
         def change_mode(self, obj: QComboBox) -> None:
             mode = obj.currentText()
 
@@ -625,8 +654,8 @@ class Minesweeper:
                 self.mode = NORMAL
 
     class Game:
-        @staticmethod
-        def run(mode: ADMIN or None = None) -> None:
+        @staticmethod  # Создает приложение Qt и запускает главный цикл программы.
+        def run(mode: Optional[None, ADMIN] = None) -> None:
             _app = QApplication(sys.argv)
             try:
                 _game = Minesweeper._Game(mode=mode)
@@ -637,8 +666,9 @@ class Minesweeper:
                 sys.exit(_app.exec())
 
 
+# точка входа.
 if __name__ == '__main__':
     # console_game = Minesweeper.ConsoleGame()
-    game = Minesweeper.Game()
     # console_game.run()
+    game = Minesweeper.Game()
     game.run(mode=ADMIN)
